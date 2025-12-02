@@ -1,0 +1,106 @@
+# Gemini Vertex AI Configuration File
+
+project_id: "your-gcp-project-id"
+location: "us-central1"
+
+# Model configuration
+model:
+  model_name: "gemini-1. 5-pro"
+  temperature: 0.7
+  max_output_tokens: 8192
+  top_p: 0.95
+  top_k: 40
+
+# System instruction for the model
+system_instruction: |
+  You are a helpful assistant that analyzes documents and images. 
+  Always provide accurate, well-structured responses based on the provided data.
+  When analyzing data, be thorough and highlight key insights.
+
+# Output formatting
+output_format:
+  format_type: "markdown"
+  include_sources: true
+  max_length: 4096
+
+# Prompt templates for different use cases
+prompts:
+  analyze_document:
+    template: |
+      Please analyze the following document and provide a comprehensive summary.
+      
+      Document content:
+      {{content}}
+      
+      Focus on: {{focus_areas}}
+    description: "Analyze and summarize document content"
+    variables: ["content", "focus_areas"]
+  
+  extract_data:
+    template: |
+      Extract the following information from the provided data:
+      {{extraction_requirements}}
+      
+      Data:
+      {{content}}
+      
+      Return the extracted information in JSON format. 
+    description: "Extract specific data from documents"
+    variables: ["extraction_requirements", "content"]
+  
+  analyze_image:
+    template: |
+      Analyze the provided image and answer the following question:
+      {{question}}
+      
+      Provide a detailed response with observations and insights.
+    description: "Analyze images and answer questions"
+    variables: ["question"]
+  
+  compare_documents:
+    template: |
+      Compare the following documents and identify:
+      1. Key similarities
+      2. Key differences
+      3.  Unique insights from each
+      
+      Document 1:
+      {{doc1}}
+      
+      Document 2:
+      {{doc2}}
+    description: "Compare multiple documents"
+    variables: ["doc1", "doc2"]
+  
+  spreadsheet_analysis:
+    template: |
+      Analyze the following spreadsheet data:
+      {{content}}
+      
+      Provide insights on:
+      - Data patterns and trends
+      - Key statistics
+      - Anomalies or outliers
+      - Recommendations based on the data
+    description: "Analyze spreadsheet data"
+    variables: ["content"]
+  
+  qa:
+    template: |
+      Based on the following context, please answer the question. 
+      
+      Context:
+      {{context}}
+      
+      Question: {{question}}
+      
+      Provide a clear and concise answer. 
+    description: "Question answering with context"
+    variables: ["context", "question"]
+
+# Safety settings (optional)
+safety_settings:
+  HARM_CATEGORY_HARASSMENT: "BLOCK_MEDIUM_AND_ABOVE"
+  HARM_CATEGORY_HATE_SPEECH: "BLOCK_MEDIUM_AND_ABOVE"
+  HARM_CATEGORY_SEXUALLY_EXPLICIT: "BLOCK_MEDIUM_AND_ABOVE"
+  HARM_CATEGORY_DANGEROUS_CONTENT: "BLOCK_MEDIUM_AND_ABOVE"
