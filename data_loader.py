@@ -9,7 +9,7 @@ import mimetypes
 from pathlib import Path
 from typing import Union, List, Dict, Any, Optional
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 
 # Document processing
@@ -26,7 +26,7 @@ class DataType(Enum):
     XLSX = "xlsx"
 
 
-@dataclass
+dataclass
 class LoadedData:
     """Container for loaded data with metadata"""
     content: Any
@@ -34,6 +34,183 @@ class LoadedData:
     source_path: str
     mime_type: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = None
+    _raw_bytes: Optional[bytes] = field(default=None, repr=False)
+    
+    def get_pil_image(self) -> Optional[Image.Image]:
+        """
+        Get PIL Image object for display or manipulation.
+        Only works for IMAGE data type.
+        
+        Returns:
+            PIL Image object or None if not an image
+        
+        Example:
+            >>> data = loader.load('photo.jpg')
+            >>> img = data.get_pil_image()
+            >>> img.show()  # Opens in default image viewer
+        """
+        if self.data_type != DataType.IMAGE:
+            return None
+        
+        if self._raw_bytes:
+            return Image.open(io.BytesIO(self._raw_bytes))
+        
+        # Decode from base64 if raw bytes not available
+        image_bytes = base64.b64decode(self.content)
+        return Image.open(io.BytesIO(image_bytes))
+    
+    def get_image_bytes(self) -> Optional[bytes]:
+        """
+        Get raw image bytes.
+        Only works for IMAGE data type.
+        
+        Returns:
+            Raw bytes or None if not an image
+        """
+        if self.data_type != DataType.IMAGE:
+            return None
+        
+        if self._raw_bytes:
+            return self._raw_bytes
+        
+        return base64.b64decode(self.content)
+    
+    def display_image(self, figsize: tuple = (10, 10), title: Optional[str] = None):
+        """
+        Display image using matplotlib (works in Jupyter notebooks).
+        Only works for IMAGE data type.
+        
+        Args:
+            figsize: Figure size as (width, height)
+            title: Optional title for the image
+        
+        Example:
+            >>> data = loader.load('photo.jpg')
+            >>> data.display_image(figsize=(12, 8), title="My Photo")
+        """
+        if self.data_type != DataType.IMAGE:
+            print(f"Cannot display: data type is {self.data_type.value}, not image")
+            return
+        
+        try:
+            import matplotlib.pyplot as plt
+            
+            img = self.get_pil_image()
+            plt.figure(figsize=figsize)
+            plt.imshow(img)
+            plt.axis('off')
+            
+            if title:
+                plt.title(title)
+            elif self.source_path:
+                plt.title(Path(self.source_path).name)
+            
+            plt.tight_layout()
+            plt.show()
+        except ImportError:
+            print("matplotlib is required for display_image(). Install with: pip install matplotlib")
+            # Fallback to PIL show
+            img = self.get_pil_image()
+            if img:
+                img.show()
+    
+    def save_image(self, output_path: str, format: Optional[str] = None, **kwargs):
+        """
+        Save image to a new file.
+        Only works for IMAGE data type.
+        
+        Args:
+            output_path: Path where to save the image
+            format: Image format (e.g., 'PNG', 'JPEG'). Auto-detected if None.
+            **kwargs: Additional arguments passed to PIL save()
+        
+        Example:
+            >>> data = loader.load('photo.jpg')
+            >>> data.save_image('photo_copy.png')  # Converts to PNG
+        """
+        if self.data_type != DataType.IMAGE:
+            raise ValueError(f"Cannot save: data type is {self.data_type.value}, not image")
+        
+        img = self.get_pil_image()
+        if img:
+            img.save(output_path, format=format, **kwargs)
+            print(f"Image saved to: {output_path}")
+    
+    def resize_image(self, width: int, height: int, resample=Image.LANCZOS) -> 'LoadedData':
+        """
+        Resize image and return new LoadedData.
+        Only works for IMAGE data type.
+        
+        Args:
+            width: New width
+            height: New height
+            resample: Resampling filter (default: LANCZOS for high quality)
+        
+        Returns:
+            New LoadedData with resized image
+        
+        Example:
+            >>> data = loader.load('large_photo.jpg')
+            >>> small = data.resize_image(800, 600)
+            >>> small.display_image()
+        """
+        if self.data_type != DataType.IMAGE:
+            raise ValueError(f"Cannot resize: data type is {self.data_type.value}, not image")
+        
+        img = self.get_pil_image()
+        resized = img.resize((width, height), resample=resample)
+        
+        # Convert back to bytes and base64
+        buffer = io.BytesIO()
+        img_format = img.format or 'PNG'
+        resized.save(buffer, format=img_format)
+        new_bytes = buffer.getvalue()
+        new_base64 = base64.b64encode(new_bytes).decode('utf-8')
+        
+        return LoadedData(
+            content=new_base64,
+            data_type=DataType.IMAGE,
+            source_path=self.source_path,
+            mime_type=self.mime_type,
+            metadata={
+                **self.metadata,
+                'width': width,
+                'height': height,
+                'original_width': self.metadata.get('width'),
+                'original_height': self.metadata.get('height')
+            },
+            _raw_bytes=new_bytes
+        )
+    
+    def get_base64_data_uri(self) -> Optional[str]:
+        """
+        Get base64 data URI for embedding in HTML.
+        Only works for IMAGE data type.
+        
+        Returns:
+            Data URI string like 'data:image/png;base64,...'
+        
+        Example:
+            >>> data = loader.load('photo.jpg')
+            >>> uri = data.get_base64_data_uri()
+            >>> html = f'<img src="{uri}">'
+        """
+        if self.data_type != DataType.IMAGE:
+            return None
+        
+        return f"data:{self.mime_type};base64,{self.content}"
+    
+    def _repr_html_(self):
+        """
+        HTML representation for Jupyter notebooks.
+        Automatically displays images inline in notebooks.
+        """
+        if self.data_type == DataType.IMAGE:
+            uri = self.get_base64_data_uri()
+            width = min(self.metadata.get('width', 500), 500)
+            return f'<img src="{uri}" width="{width}"><br><small>{self.source_path}</small>'
+        else:
+            return f"<pre>LoadedData({self.data_type.value}): {self.source_path}</pre>"
 
 
 class BaseLoader(ABC):
@@ -72,7 +249,7 @@ class ImageLoader(BaseLoader):
                 'mode': img.mode
             }
         
-        # Encode to base64 for Gemini
+        # Encode to base64 for Gemini API
         base64_image = base64.b64encode(image_bytes).decode('utf-8')
         
         return LoadedData(
@@ -80,7 +257,8 @@ class ImageLoader(BaseLoader):
             data_type=DataType.IMAGE,
             source_path=file_path,
             mime_type=mime_type,
-            metadata=metadata
+            metadata=metadata,
+            _raw_bytes=image_bytes  # Store raw bytes for display
         )
 
 
